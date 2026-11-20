@@ -3,6 +3,7 @@ name: Compilar APK
 # Roda os testes e gera o APK do DeskPad Gamer Bridge a cada envio.
 # Se os segredos da chave existirem (DESKPAD_KEYSTORE_BASE64 etc., os MESMOS do repositório do DeskPad),
 # gera a versão final assinada com a chave do DeskPad; senão, gera a versão de teste (debug).
+# O APK também é publicado em Releases ("Releases" > "Gamer Bridge (mais recente)"), exceto em pull requests.
 
 on:
   push:
@@ -10,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -83,3 +84,17 @@ jobs:
             core/build/reports/tests/
             app/build/reports/tests/
           if-no-files-found: ignore
+
+      - name: Publicar o APK em Releases
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$VARIANT" = "release" ]; then t="versão final assinada com a chave do DeskPad"; else t="versão de TESTE (debug): o encerramento pelo DeskPad não funciona e, para atualizar, é preciso desinstalar a anterior"; fi
+          sha=$(grep -m1 'SHA-256' assinatura.txt | sed 's/.*: //')
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest "$APK" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Gamer Bridge $VER (mais recente)" \
+            --notes "DeskPad Gamer Bridge $VER, $t. Commit ${GITHUB_SHA::7}. Certificado (SHA-256): $sha. Instruções de teste: docs/TESTES.md."

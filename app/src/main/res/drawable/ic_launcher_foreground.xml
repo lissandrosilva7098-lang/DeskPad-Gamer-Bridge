@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chave deslizante (o botão Gamer) ligada. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF3A3A40"
+        android:pathData="M42,40 H66 A14,14 0 0 1 66,68 H42 A14,14 0 0 1 42,40 Z" />
+    <path
+        android:fillColor="#FFE53935"
+        android:pathData="M55,54 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0" />
+</vector>

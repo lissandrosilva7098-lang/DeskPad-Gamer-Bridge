@@ -1,0 +1,85 @@
+name: Compilar APK
+
+# Roda os testes e gera o APK do DeskPad Gamer Bridge a cada envio.
+# Se os segredos da chave existirem (DESKPAD_KEYSTORE_BASE64 etc., os MESMOS do repositório do DeskPad),
+# gera a versão final assinada com a chave do DeskPad; senão, gera a versão de teste (debug).
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Preparar a chave de assinatura (se existir)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DESKPAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/deskpad.jks"
+            echo "DESKPAD_KEYSTORE=$RUNNER_TEMP/deskpad.jks" >> "$GITHUB_ENV"
+            echo "VARIANT=release" >> "$GITHUB_ENV"
+            echo "Chave encontrada: versão final assinada com a chave do DeskPad."
+          else
+            echo "VARIANT=debug" >> "$GITHUB_ENV"
+            echo "::warning::Sem a chave nos segredos: versão de teste (debug). O encerramento pelo DeskPad exige a mesma chave do DeskPad."
+          fi
+          ver=$(grep -m1 -oE 'versionName *= *"[^"]+"' app/build.gradle.kts | sed -E 's/.*"([^"]+)"/\1/')
+          echo "VER=${ver:-sem-versao}" >> "$GITHUB_ENV"
+
+      - name: Testes (regras do botão, monitores e decisões)
+        run: ./gradlew --no-daemon --console=plain :core:test :app:testDebugUnitTest
+
+      - name: Compilar
+        env:
+          DESKPAD_KEYSTORE_PASSWORD: ${{ secrets.DESKPAD_KEYSTORE_PASSWORD }}
+          DESKPAD_KEY_ALIAS: ${{ secrets.DESKPAD_KEY_ALIAS }}
+          DESKPAD_KEY_PASSWORD: ${{ secrets.DESKPAD_KEY_PASSWORD }}
+        run: |
+          if [ "$VARIANT" = "release" ]; then task=:app:assembleRelease; else task=:app:assembleDebug; fi
+          ./gradlew --no-daemon --console=plain "$task"
+
+      - name: Conferir o APK e a assinatura
+        run: |
+          f=$(ls app/build/outputs/apk/"$VARIANT"/*.apk | head -1)
+          if [ -z "$f" ]; then echo "::error::APK não encontrado"; exit 1; fi
+          case "$f" in *unsigned*) echo "::error::APK final saiu sem assinatura: confira os segredos da chave"; exit 1;; esac
+          out="DeskPad-Gamer-Bridge-$VER-$VARIANT.apk"
+          cp "$f" "$out"
+          ls -l "$out"
+          signer=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$signer" verify --print-certs "$out" | tee assinatura.txt
+          echo "::notice::APK $out gerado. Certificado: $(grep -m1 'SHA-256' assinatura.txt | sed 's/.*: //')"
+          echo "APK=$out" >> "$GITHUB_ENV"
+
+      - name: Guardar o APK como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeskPad-Gamer-Bridge-${{ env.VER }}-${{ env.VARIANT }}
+          path: |
+            ${{ env.APK }}
+            assinatura.txt
+
+      - name: Guardar relatórios dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-dos-testes
+          path: |
+            core/build/reports/tests/
+            app/build/reports/tests/
+          if-no-files-found: ignore

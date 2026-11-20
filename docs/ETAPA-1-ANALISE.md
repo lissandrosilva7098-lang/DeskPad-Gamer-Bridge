@@ -20,9 +20,9 @@ Legenda usada neste documento:
 2. Segundo o comentário do próprio autor no código, **`0` = ligado e `1` = desligado**. O observer é chamado
    **nas duas transições**, mas o GSR simplesmente ignora o caso "desligado" (`if (isGameSwitchOn) { … }`).
    Isso explica exatamente o que você viu: abre ao ligar e não faz nada ao desligar. **[COMPROVADO no código]**
-3. Portanto, **é muito provável que o desligamento possa ser detectado pela mesma chave**, sem Shizuku,
-   sem acessibilidade e sem polling. Isso ainda é **[HIPÓTESE]**: precisa ser confirmado no seu aparelho
-   com o roteiro `tools/verificar-botao-gamer.sh` (seção 7).
+3. **O desligamento pode ser detectado.** O teste no aparelho (20/11, 02:14, seção 5.1) mostrou que **quatro
+   configurações globais** mudam ao ligar e voltam ao desligar, entre elas `gcs_need_kill_game_launcher`
+   (desligado=`1`, ligado=`0`). Sem Shizuku, sem acessibilidade e sem polling. **[EMPÍRICO, 1 ciclo]**
 4. O **DeskPad não oferece nenhuma ação externa para encerrar a sessão**. A única ação de saída
    (`com.deskpad.app.MONITOR_EXIT`) fica num serviço **não exportado**, inacessível a outros apps (inclusive
    pelo Shizuku). Um encerramento correto exige uma pequena integração explícita no DeskPad no futuro.
@@ -191,7 +191,7 @@ então não responde à questão do desligamento. Mas confirma pontos importante
 
 | Mecanismo | Situação | Observação |
 |---|---|---|
-| `Settings.Global gcs_need_kill_game_launcher` | **[HIPÓTESE forte]** | O observer dispara ao desligar; o valor esperado é `1`. Sem permissão, sem polling, sem Shizuku. Falta confirmar no aparelho. |
+| `Settings.Global` (`gcs_need_kill_game_launcher` e outras 2 chaves) | **[EMPÍRICO]** | Confirmado no aparelho: ver 5.1. Sem permissão, sem polling, sem Shizuku. |
 | Outras chaves (global/system/secure) e `getprop` | a verificar | O roteiro compara tudo antes/depois. Propriedades (`getprop`) não têm observer: só serviriam com polling, por isso ficam como último recurso. |
 | Broadcasts / intents / serviços da REDMAGIC | **sem evidência** | Nada no GSR nem no DeskPad. Não vou supor nenhum. O roteiro grava o logcat durante os acionamentos para procurar algo real. Além disso, desde o Android 8 a maioria dos broadcasts implícitos não chega a receivers do manifesto. |
 | Game Space perder o foco / UsageStats | **[DESCARTADO]** como prova | Como você observou, o próprio app de destino assume o primeiro plano. Serve no máximo como sinal auxiliar no diagnóstico. |
@@ -200,9 +200,42 @@ então não responde à questão do desligamento. Mas confirma pontos importante
 | Shizuku + `getevent` | candidato de reserva | Se o botão aparecer como dispositivo de entrada (EV_SW/EV_KEY), seria um sinal de hardware real. Exige Shizuku sempre ativo e um processo `getevent` permanente. Só se a chave falhar. |
 | Temporizador | **[DESCARTADO]** | Proibido por você, e não é detecção. |
 
-**Conclusão:** o caminho mais simples, legítimo e eficiente é a própria chave `gcs_need_kill_game_launcher`.
-O Bridge só habilitará o **encerramento automático** depois que o próprio app tiver **visto, no seu aparelho,
-as duas transições** (ligado→`0` e desligado→`1`); até lá a opção fica bloqueada e a tela diz o motivo.
+### 5.1 Resultado do teste físico (20/11, 02:13–02:14)
+
+Teste feito com o aprendizado do DeskPad: 3 leituras de todas as configurações pelo Shizuku, sem nenhuma
+alteração. Resultado: **5 configurações mudaram ao ligar e voltaram ao desligar**.
+
+| Configuração | Desligado | Ligado | Uso no Bridge |
+|---|---|---|---|
+| `global:zte_keypad_slide_on_or_off` | `0` | `1` | **sinal** (o nome descreve a chave deslizante física) |
+| `global:cc_nubia_game_key` | `0` | `1` | **sinal** |
+| `global:gcs_need_kill_game_launcher` | `1` | `0` | **sinal** (o mesmo do GSR; a hipótese foi confirmada) |
+| `global:game_subagent_scene` | `0` | `1` | só no diagnóstico (o nome indica "cena de jogo", que pode mudar por outros motivos) |
+| `secure:default_home` | `com.teslacoilsw.launcher` | `cn.nubia.gamelauncher` | **nunca** usada nem alterada (muda se você trocar de launcher) |
+
+Conclusões:
+
+- O desligamento **gera um sinal real e específico**: três chaves independentes voltam ao valor de "desligado".
+  **[EMPÍRICO]**
+- Com o botão ligado, **o Game Space passa a ser a tela inicial (launcher)**. Ao desligar, o sistema devolve o
+  launcher normal (Nova). Consequências:
+  - Ao encerrar o DeskPad depois do desligamento, você volta ao Android normal **sem que o Bridge precise mexer no
+    launcher**.
+  - Se você sair do DeskPad à mão com o botão ainda ligado, cai no Game Space. É o comportamento do sistema, e o
+    Bridge não interfere.
+- O `getevent -lp` do aprendizado foi cortado no primeiro dispositivo (um mouse Bluetooth). Não é preciso
+  investigar eventos de hardware: as configurações já bastam.
+
+### 5.2 Regra de detecção do Bridge
+
+- Observa as **três chaves de sinal** com `ContentObserver` (nenhum polling).
+- **Estado = maioria (2 de 3)**. Isso protege contra uma chave mudar por outro motivo. O GSR, por exemplo, cita uma
+  "tecla competitiva" que também mexe em `gcs_need_kill_game_launcher`. O custo é esperar a segunda chave mudar,
+  o que deve levar milissegundos. O Diagnóstico registra a ordem e o tempo de cada chave para confirmar isso.
+- Só age em **transições confirmadas** (desligado→ligado, ligado→desligado). Repetições e valores inesperados são
+  ignorados e registrados.
+- O encerramento automático só fica disponível depois que o **próprio Bridge** tiver visto as duas transições no
+  seu aparelho. O teste acima foi um único ciclo, feito por outro app.
 
 ---
 

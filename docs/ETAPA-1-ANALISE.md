@@ -158,6 +158,33 @@ verificação a cada 2 s), confirma por 1,2 s e então abre (se faltar) ou encer
 - **Risco de conflito:** se o DeskPad (interno), o GSR e o Bridge estiverem ativos ao mesmo tempo, os três reagem
   ao mesmo botão. O `singleTask` evita telas duplicadas, mas haverá pedidos de abertura repetidos.
 
+### 4.4 Evidências do aparelho (Diagnóstico do DeskPad, 20/11, 00:38–00:50)
+
+Registro enviado por você. **Ele não contém nenhum acionamento do botão Gamer** (não há nenhuma linha `[gamer]`),
+então não responde à questão do desligamento. Mas confirma pontos importantes para o projeto:
+
+1. **Aparelho:** `Android 16 (SDK 36) nubia NX809J`. Tela do celular `id=0` 2688x1216; monitor
+   `"Tela HDMI"` 1920x1080, `flags=0x8b`. **[EMPÍRICO]**
+2. **O ID do monitor muda a cada conexão** (205, 207, 208, 209/210, 211). Às 00:43:02, **dois displays
+   apareceram juntos** (209 e 210) numa única conexão. O Bridge nunca vai guardar um ID fixo; ele confere
+   "existe monitor externo agora?" no momento em que o botão é ligado.
+3. **As janelas do DeskPad criam displays virtuais** (`deskpad-ZArchiver`, `deskpad-ChatGPT`, `flags=0x5f80`),
+   e eles disparam o `DisplayListener` como se fossem monitores. Eles **não têm `FLAG_PRIVATE` (0x4)**, então
+   esse filtro não basta. Filtro do Bridge: exigir `FLAG_PRESENTATION` (0x8, presente no HDMI e ausente nos
+   virtuais) e ignorar nomes `deskpad-*`. **[EMPÍRICO]**
+4. **A entrada automática do próprio DeskPad falha neste aparelho.** Em 4 de 4 conexões:
+   "abrindo o DeskPad" e, cerca de 4 s depois, "o Android não abriu o DeskPad: aviso para abrir com um toque".
+   O desktop só subiu quando você abriu à mão (por exemplo, às 00:40:36). O DeskPad **não tem**
+   `SYSTEM_ALERT_WINDOW`; o GSR, que abre o DeskPad com sucesso, tem. Isso reforça usar no Bridge
+   o caminho comprovado pelo GSR e **conferir se a abertura realmente aconteceu**, com o aviso de toque como
+   alternativa. **[EMPÍRICO]** (As linhas do registro diferem um pouco do código do zip analisado, então a versão
+   instalada pode não ser exatamente a mesma.)
+5. **O DeskPad já fecha sozinho ao desconectar o monitor** ("Monitor continua desconectado: fechando a tela do
+   DeskPad no celular"). O Bridge não vai interferir nisso.
+6. **A integração Gamer interna do DeskPad não está ativa** (nenhuma linha `[gamer]`). Hoje não há conflito com ela.
+7. O REDMAGIC OS injeta código de jogos nos apps (`GameActivityStub`, `Macro-Helper: not in game list` no logcat do
+   ChatGPT). Isso não é um sinal do botão e não será usado.
+
 ---
 
 ## 5. Investigação do desligamento — todas as possibilidades

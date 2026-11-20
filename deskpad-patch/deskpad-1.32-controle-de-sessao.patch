@@ -1,0 +1,116 @@
+diff -ruN a/DeskPad/FUNCIONALIDADES.md b/DeskPad/FUNCIONALIDADES.md
+--- a/DeskPad/FUNCIONALIDADES.md	2026-11-20 04:26:06.000000000 +0000
++++ b/DeskPad/FUNCIONALIDADES.md	2026-11-20 09:43:44.800896015 +0000
+@@ -898,3 +898,10 @@
+ - [Não confirmado] Detecção por "Acesso ao uso" (opcional, autorizado por você; só olha os apps da lista).
+ - [Não confirmado] Serviço do Shizuku com lista fechada de comandos permitidos: qualquer outro comando é negado.
+ - [Não confirmado] Leitura do log do Android restrita às mensagens de abertura de janelas.
++
++## Versão 1.32
++
++- [Não confirmado] **Controle de sessão para o DeskPad Gamer Bridge.** O DeskPad passa a aceitar dois pedidos do app Gamer Bridge: consultar
++  se o desktop está aberto (`com.deskpad.app.action.QUERY_SESSION`) e encerrá-lo (`com.deskpad.app.action.END_SESSION`), o mesmo que
++  "Sair do DeskPad". Protegido pela permissão `com.deskpad.permission.CONTROL_SESSION` (`signature`): só um app assinado com a mesma
++  chave do DeskPad consegue chamar. Não apaga dados nem altera configurações. Registro: Diagnóstico > "gamer".
+diff -ruN a/DeskPad/app/build.gradle.kts b/DeskPad/app/build.gradle.kts
+--- a/DeskPad/app/build.gradle.kts	2026-11-20 04:24:52.000000000 +0000
++++ b/DeskPad/app/build.gradle.kts	2026-11-20 09:43:44.799961711 +0000
+@@ -15,8 +15,8 @@
+         applicationId = "com.deskpad.app"
+         minSdk = 26
+         targetSdk = 34
+-        versionCode = 32
+-        versionName = "1.31"
++        versionCode = 33
++        versionName = "1.32"
+     }
+ 
+     signingConfigs {
+diff -ruN a/DeskPad/app/src/main/AndroidManifest.xml b/DeskPad/app/src/main/AndroidManifest.xml
+--- a/DeskPad/app/src/main/AndroidManifest.xml	2026-11-20 03:02:55.000000000 +0000
++++ b/DeskPad/app/src/main/AndroidManifest.xml	2026-11-20 09:43:44.799863990 +0000
+@@ -2,6 +2,12 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:tools="http://schemas.android.com/tools">
+ 
++    <!-- 1.32: o app DeskPad Gamer Bridge (mesma assinatura) pode consultar e encerrar a sessão desktop. Nenhum outro app recebe esta permissão. -->
++    <permission
++        android:name="com.deskpad.permission.CONTROL_SESSION"
++        android:label="Controlar a sessão desktop do DeskPad"
++        android:protectionLevel="signature" />
++
+     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+     <uses-permission android:name="android.permission.VIBRATE" />
+     <!-- só para baixar papel de parede animado quando o usuário pede (link https colado por ele) -->
+@@ -116,6 +122,17 @@
+                 android:value="Vigia a conexão de um monitor externo para abrir o desktop do DeskPad" />
+         </service>
+ 
++        <!-- 1.32: consulta e encerramento da sessão pelo Gamer Bridge. Exportado, mas protegido pela permissão de assinatura. -->
++        <receiver
++            android:name=".SessionControlReceiver"
++            android:exported="true"
++            android:permission="com.deskpad.permission.CONTROL_SESSION">
++            <intent-filter>
++                <action android:name="com.deskpad.app.action.QUERY_SESSION" />
++                <action android:name="com.deskpad.app.action.END_SESSION" />
++            </intent-filter>
++        </receiver>
++
+         <receiver
+             android:name=".BootReceiver"
+             android:exported="true">
+diff -ruN a/DeskPad/app/src/main/java/com/deskpad/app/SessionControlReceiver.kt b/DeskPad/app/src/main/java/com/deskpad/app/SessionControlReceiver.kt
+--- a/DeskPad/app/src/main/java/com/deskpad/app/SessionControlReceiver.kt	1970-01-01 00:00:00.000000000 +0000
++++ b/DeskPad/app/src/main/java/com/deskpad/app/SessionControlReceiver.kt	2026-11-20 09:43:44.783391474 +0000
+@@ -0,0 +1,50 @@
++package com.deskpad.app
++
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++
++/**
++ * 1.32: controle de sessão para o app DeskPad Gamer Bridge (com.deskpad.gamerbridge).
++ *
++ * Protegido pela permissão com.deskpad.permission.CONTROL_SESSION (protectionLevel="signature"): só um app assinado com a
++ * MESMA chave do DeskPad consegue chamar. Faz só o que "Sair do DeskPad" já faz (finish da tela): não apaga dados, não altera
++ * configurações e não mexe na entrada automática pelo monitor.
++ *
++ * Responde no resultCode de um broadcast ordenado:
++ *  - QUERY_SESSION: 1 = desktop aberto, 2 = fechado.
++ *  - END_SESSION:   1 = sessão encerrada, 2 = não havia sessão.
++ */
++class SessionControlReceiver : BroadcastReceiver() {
++
++    override fun onReceive(context: Context, intent: Intent) {
++        val action = intent.action ?: return
++        try {
++            Diag.init(context)
++        } catch (t: Throwable) {
++        }
++        when (action) {
++            ACTION_QUERY -> {
++                val open = TouchpadActivity.desktopUp
++                answer(if (open) 1 else 2)
++            }
++            ACTION_END -> {
++                val reason = intent.getStringExtra(EXTRA_REASON) ?: "?"
++                val ended = TouchpadActivity.alive && TouchpadActivity.exitFromGamer()
++                Diag.log("gamer", "Pedido do Gamer Bridge para encerrar a sessão (motivo=" + reason + "): " + (if (ended) "encerrada" else "não havia sessão"))
++                answer(if (ended) 1 else 2)
++            }
++        }
++    }
++
++    /** Só um broadcast ordenado tem resultado; num normal, ignora. */
++    private fun answer(code: Int) {
++        if (isOrderedBroadcast) resultCode = code
++    }
++
++    companion object {
++        const val ACTION_QUERY = "com.deskpad.app.action.QUERY_SESSION"
++        const val ACTION_END = "com.deskpad.app.action.END_SESSION"
++        const val EXTRA_REASON = "com.deskpad.app.extra.REASON"
++    }
++}

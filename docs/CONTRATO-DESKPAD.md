@@ -1,6 +1,6 @@
 # Contrato de sessão: DeskPad ↔ Gamer Bridge
 
-**Situação: o DeskPad publicado ainda NÃO implementa este contrato.** A mudança já está pronta como patch em [`deskpad-patch/deskpad-1.32-controle-de-sessao.patch`](../deskpad-patch/deskpad-1.32-controle-de-sessao.patch) (DeskPad 1.32), mas **não foi aplicada nem enviada ao repositório do DeskPad**. Este documento define o que precisa ser adicionado ao
+**Situação: o DeskPad publicado ainda NÃO implementa este contrato.** A mudança já está pronta como patch em [`deskpad-patch/deskpad-1.32-controle-de-sessao.patch`](../deskpad-patch/deskpad-1.32-controle-de-sessao.patch) (DeskPad 1.32), e já está aplicada na branch **`bridge-controle-sessao`** do repositório Deskpad-NOVO (o `DeskPad-projeto.zip` dessa branch é o DeskPad 1.32). **Ainda não foi mesclada na `main` e não foi compilada.** O CI do DeskPad só compila em `main`/`master` e publica a release "latest" por cima da atual; por isso a branch ficou separada, para você decidir quando mesclar. Este documento define o que precisa ser adicionado ao
 DeskPad (em outra etapa, só com a sua autorização) para o Bridge poder encerrar a sessão desktop ao desligar o botão
 Gamer. O Bridge já está pronto para usá-lo e **só o usa quando detecta, no aparelho, que o DeskPad instalado o oferece**.
 Até lá, a tela do Bridge mostra "Encerramento indisponível".
